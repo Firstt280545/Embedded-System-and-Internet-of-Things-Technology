@@ -1,0 +1,17 @@
+Lap 7.2 000host : con_db.php
+<?php
+/* นำข้อมูลมาใส่โดยหาได้จาก Database Manager ใน 000webhost*/
+$servername = "localhost";          // คือหาได้จาก DB Host
+$username = "id20422652_admin";     // หาได้จาก DB User
+$password = "Giter_172544";        // รหัสผ่านตอนสร้าง Database
+$dbname = "id20422652_iotwithterlap7";       //  หาได้จาก DB Name
+// ส่วนนี้จะเป็นการเชื่อมต่อฐานข้อมูล
+$conn = new mysqli($servername, $username, $password, $dbname); // ตัวแปรเก็บค่าคำสั่งในการเชื่อมต่อฐานข้อมูล
+// สร้างเงื่อนไขเพื่อตรวจสอบการเชื่อมต่อ โดยหากเชื่อมต่อสำเร็จ จะขึ้นข้อความว่า "connected"
+if ($conn->connect_error){
+    die("cannot connect to database" . $conn->connect_error);
+  }
+else{
+    echo "connected!";
+  }
+?>
