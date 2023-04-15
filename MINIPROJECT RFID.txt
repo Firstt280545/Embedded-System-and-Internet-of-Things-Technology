@@ -1,0 +1,171 @@
+/*
+ไฟล์นี้ทดสอบการส่งค่า int และ float ขึ้นไปยัง Firebase
+*/
+
+#include <Firebase_ESP_Client.h>    // import ไลบรารี่สำหรับ Firebase
+
+// การทำงานของ token และ payload ที่จำเป็นสำหรับ firebase
+#include "addons/TokenHelper.h"     
+#include "addons/RTDBHelper.h"
+
+#include <MFRC522.h>
+#include <MFRC522Extended.h>
+#include <deprecated.h>
+#include <require_cpp11.h>
+//Libraries
+#include <SPI.h>
+#include <MFRC522.h>
+
+#define WiFi_SSID "sasmha-2.4G"          // ระุชื่อ wifi hotspot
+#define WiFi_PASSWORD "sasmha5552020"  // ระบุรหัส wifi hotspot
+#define API_KEY "AIzaSyAQJi1QuiUM2vbpLjGBJn4-EE9LX3uRTFs"     // API KEY ที่ได้จาก Firebase
+#define DATABASE_URL "https://rfid-52c65-default-rtdb.asia-southeast1.firebasedatabase.app/"   // ระบุลิงค์ Realtime Database
+#define SS_PIN 2
+#define RST_PIN 0
+
+// ตัวแปรที่จำเป็นสำหรับใช้งาน Firebase ในการเชื่อมต่อและการส่งค่า
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+// ตัวแปรกำหนดค่าสมมติในการส่งเพื่อการทดสอบ
+unsigned long sendDataPrevMillis = 0;
+bool signupOK = false;
+
+byte nuidPICC[4] = {0, 0, 0, 0};
+MFRC522::MIFARE_Key key;
+MFRC522 rfid = MFRC522(SS_PIN, RST_PIN);
+
+void setup() {
+
+  Serial.begin(115200);
+  Serial.println(F("Start!"));
+  
+  //เริ่มต้นการทำงานของ RFID และการส่งข้อมูลผ่าน Serial
+  SPI.begin();
+  rfid.PCD_Init();
+
+
+  // การเชื่อมต่อ WiFi
+  WiFi.begin(WiFi_SSID, WiFi_PASSWORD);
+  Serial.print("connecting to ");
+  Serial.print(WiFi_SSID);
+  while (WiFi.status() != WL_CONNECTED){
+    Serial.print(".");
+    delay(1000);
+  }
+  Serial.println();
+  Serial.print("Connected with IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.println();
+
+  config.api_key = API_KEY;   // นำ API-KEY ใส่คำสั่ง config
+
+  config.database_url = DATABASE_URL;   // // นำ URL ของ Realtime database ใส่คำสั่ง config
+
+  // ตรวจสอบการเชื่อมต่อ ทำการเชื่อมต่อโดยใช้ค่าจาก config และ auth
+  if (Firebase.signUp(&config, &auth, "", "")){
+    Serial.println("ok");   // แสดงคำว่า "ok" หากเชื่อมต่อสำเร็จ
+    signupOK = true;        // หากเชื่อมต่อสำเร็จ ให้ทำการระบุค่า "จริง" ให้กับตัวแปรนี้
+  }
+  else{
+    Serial.printf("%s\n", config.signer.signupError.message.c_str());
+  }
+
+  config.token_status_callback = tokenStatusCallback; //see addons/TokenHelper.h
+  
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+}
+
+boolean isCounterbox1 = false;
+int count1 = 0;
+boolean isCounterbox2 = false;
+int count2 = 0;
+
+void loop() {
+readRFID();
+  // ระบุเงื่อนไข หากค่าใน signupOK เป็นจริง และ Firebase สามารถใช้งานได้ จะให้ทำการประมวลผลโค้ดในส่วนของการส่งค่าที่อยู่ใน if
+  if (Firebase.ready() && signupOK && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0)){
+    sendDataPrevMillis = millis();
+
+
+    if (Firebase.RTDB.setInt(&fbdo, "BOX/brandbox_A", count1)){
+    }
+    else {
+      Serial.println("FAILED");                         // หากส่งไม่ผ่านจะขึ้นว่า "FAILED"
+      Serial.println("REASON: " + fbdo.errorReason());  // หากส่งไม่ผ่านจะระบุเหตุผลที่ส่งไม่ผ่าน
+    }
+
+    if (Firebase.RTDB.setFloat(&fbdo, "BOX/brandbox_B",count2)){
+    }
+    else {
+      Serial.println("FAILED");
+      Serial.println("REASON: " + fbdo.errorReason());
+    }
+  }
+}
+
+void readRFID(void ) { // ฟังก์ชันสำหรับการอ่าน tag
+  //// อ่าน (Read) RFID card
+
+  for (byte i = 0; i < 6; i++) {
+    key.keyByte[i] = 0xFF;
+  }
+  // เงื่อนไขหากพบ tag
+  if ( ! rfid.PICC_IsNewCardPresent())
+    return;
+
+  // เงื่อนไขหากตรวจพบ tag id
+  if (  !rfid.PICC_ReadCardSerial())
+    return;
+
+  // บันทึกค่า tag id
+  for (byte i = 0; i < 4; i++) {
+    nuidPICC[i] = rfid.uid.uidByte[i];
+  }
+
+  // แสดง tag id ผ่าน serial monitor
+  Serial.print(F("หมายเลข RFID : "));
+  printDec(rfid.uid.uidByte, rfid.uid.size);
+  Serial.println();
+
+  if(rfid.uid.uidByte[0] == 212 && rfid.uid.uidByte[1] == 206 && rfid.uid.uidByte[2] == 31 && rfid.uid.uidByte[3] == 220 ){
+    Serial.println("กล่องยี่ห้อ A");
+    Serial.print("กล่องที่ :");
+    isCounterbox1 = true;
+    count1++;
+  }
+  else if(rfid.uid.uidByte[0] == 83 && rfid.uid.uidByte[1] == 12 && rfid.uid.uidByte[2] == 164 && rfid.uid.uidByte[3] == 00 ){
+    Serial.println("กล่องยี่ห้อ B");
+    Serial.print("กล่องที่ :");
+    isCounterbox2 = true;
+    count2++;
+  }else{
+    Serial.println("ไม่อยู่ในรายการ");
+  }
+  if (isCounterbox1 == true) {
+    isCounterbox1 = false;
+    Serial.println(count1);
+  }
+  if (isCounterbox2 == true) {
+    isCounterbox2 = false;
+    Serial.println(count2);
+  }
+  // หยุดการทำงาน
+  rfid.PICC_HaltA();
+
+  // หยุดการเข้ารหัส
+  rfid.PCD_StopCrypto1();
+
+}
+
+/**
+   ฟังก์ชันในการนำค่า ID ที่เป็นเลขฐาน 10 ส่งผ่านช่องทาง Serial
+*/
+void printDec(byte *buffer, byte bufferSize) {
+  for (byte i = 0; i < bufferSize; i++) {
+    Serial.print(buffer[i] < 0x10 ? " 0" : " ");
+    Serial.print(buffer[i], DEC);
+  }
+}
